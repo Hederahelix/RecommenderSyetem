@@ -46,6 +46,7 @@ public class MultiloadFile {
 				stmt = conn.createStatement();
 				System.out.println("LOAD DATA LOCAL INFILE '"+filename+"' INTO TABLE trace_"+tableName+" FIELDS TERMINATED BY ' ' OPTIONALLY ENCLOSED BY '' LINES TERMINATED BY '\r\n' (uid,iid,time);");
 				stmt.execute("LOAD DATA LOCAL INFILE '"+filename+"' INTO TABLE trace_"+tableName+" FIELDS TERMINATED BY ' ' OPTIONALLY ENCLOSED BY '' LINES TERMINATED BY '\r\n' (uid,iid,time);");
+				ConnectionSource.closeAll(stmt,conn);
 			} catch (SQLException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();

@@ -12,7 +12,7 @@ public class TablesManger {
 		String tablename = "trace_",tmp;
 		Connection conn = ConnectionSource.getConnection();
     	Statement stmt = conn.createStatement();
-    	for(int i=1;i<101;i++)
+    	for(int i=2;i<101;i++)
     	{
     		if(i<10){
     			tmp = tablename+"00"+i; 
@@ -83,7 +83,8 @@ public class TablesManger {
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
 		try {
-			truncate();
+			//truncate();
+			createTables();
 		} catch (SQLException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();

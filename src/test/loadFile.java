@@ -17,6 +17,7 @@ public class loadFile {
 			Statement stmt = conn.createStatement();
 			 System.out.println("LOAD DATA LOCAL INFILE 'D:/data/test/10000000w.txt' INTO TABLE trace_001 FIELDS TERMINATED BY ' ' OPTIONALLY ENCLOSED BY '' LINES TERMINATED BY '\r\n' (uid,iid,time);");
 			 stmt.execute("LOAD DATA LOCAL INFILE 'D:/data/splitefiles/file4.txt' INTO TABLE trace_004 FIELDS TERMINATED BY ' ' OPTIONALLY ENCLOSED BY '' LINES TERMINATED BY '\r\n' (uid,iid,time);");
+			 ConnectionSource.closeAll(stmt,conn);
 			 long endTime = System.currentTimeMillis();//获取当前时间
 			 System.out.println("LOAD FILE 100w 程序运行时间："+(endTime-startTime)/60000+"min");
 		} catch (SQLException e) {
