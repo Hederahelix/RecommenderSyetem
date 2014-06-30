@@ -80,7 +80,8 @@ public class MultiPaoDingAnalysis {
 		    	   
 		    	   if(complete == tasknum)
 		    		   break;
-	            }
+	           }
+			   set.close();
 			}
 	        
 	        

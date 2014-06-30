@@ -28,20 +28,29 @@ public class loadFile {
 			 
 			 Connection conn = ConnectionSource.getConnection();
 			 Statement stmt = conn.createStatement();
-			 for(int i=1;i<10;i++){
+			 /*for(int i=1;i<32;i++){
 				 if(i<10)
 					 tableName = "00"+i;
 				 else
 					 tableName = "0"+i;
 				 
 				 endTime = System.currentTimeMillis();
+				 stmt.execute("DROP INDEX `index` ON trace_"+tableName+";");
 				 System.out.println("LOAD DATA LOCAL INFILE 'D:/data/splitefiles/file"+i+".txt' INTO TABLE trace_"+tableName+" FIELDS TERMINATED BY ' ' OPTIONALLY ENCLOSED BY '' LINES TERMINATED BY '\r\n' (uid,iid,time);");
 				 stmt.execute("LOAD DATA LOCAL INFILE 'D:/data/splitefiles/file"+i+".txt' INTO TABLE trace_"+tableName+" FIELDS TERMINATED BY ' ' OPTIONALLY ENCLOSED BY '' LINES TERMINATED BY '\r\n' (uid,iid,time);");
-				
-				 System.out.println("LOAD FILE "+i+" 程序运行时间："+(endTime-midTime)+"ms");
+				 stmt.execute("CREATE INDEX `index` ON trace_"+tableName+" (uid,iid,time);");
+				 System.out.println("LOAD FILE "+i+" 程序运行时间："+(midTime-endTime)/60000+"min");
 				 midTime = endTime;
+			 }*/
+			 stmt.execute("DROP INDEX `index` ON trace_all;");
+			 for(int i=1;i<32;i++){
+				  
+				 System.out.println("LOAD DATA LOCAL INFILE 'D:/data/splitefiles/file"+i+".txt' INTO TABLE trace_all FIELDS TERMINATED BY ' ' OPTIONALLY ENCLOSED BY '' LINES TERMINATED BY '\r\n' (uid,iid,time);");
+				 stmt.execute("LOAD DATA LOCAL INFILE 'D:/data/splitefiles/file"+i+".txt' INTO TABLE trace_all FIELDS TERMINATED BY ' ' OPTIONALLY ENCLOSED BY '' LINES TERMINATED BY '\r\n' (uid,iid,time);");
+
 			 }
-			  
+			 stmt.execute("CREATE INDEX `index` ON trace_all (uid,iid,time);");
+			 
 
 			 ConnectionSource.closeAll(stmt,conn);  
 			  
