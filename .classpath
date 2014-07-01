@@ -17,6 +17,5 @@
 	<classpathentry kind="lib" path="lib/lucene-core-2.2.0.jar"/>
 	<classpathentry kind="lib" path="lib/lucene-highlighter-2.2.0.jar"/>
 	<classpathentry kind="lib" path="lib/jna-4.0.0.jar"/>
-	<classpathentry kind="lib" path="lib/NLPIR.dll"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
