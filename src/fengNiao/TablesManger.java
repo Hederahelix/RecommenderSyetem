@@ -86,7 +86,7 @@ public class TablesManger {
 		Connection conn = ConnectionSource.getConnection();
     	Statement stmt = conn.createStatement();
     	sql = "alter table tt7 engine=myisam;";
-    	for(int i=2;i<110;i++)
+    	for(int i=1;i<101;i++)
     	{
     		if(i<10)
     			sql = "alter table trace_00"+i+" engine=myisam;";
@@ -123,11 +123,14 @@ public class TablesManger {
 		Connection conn = ConnectionSource.getConnection();
     	Statement stmt = conn.createStatement();
     	int num,sum = 0; 
-    	for(int i=1;i<110;i++)
+    	for(int i=1;i<32;i++)
     	{
-    		
+    		if(i<10)
+				tablename = "trace_00"+i;
+			else
+				tablename = "trace_0"+i;
     		System.out.println("line "+i);
-    		ResultSet set = stmt.executeQuery("select count(id) from Token_"+i);
+    		ResultSet set = stmt.executeQuery("select count(id) from "+tablename);
     		set.next();
     		num = set.getInt(1);
     		System.out.println(num); 
@@ -142,7 +145,8 @@ public class TablesManger {
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
 		try {
-			changeEngine4Trace();
+			calSum4Token();
+			//changeEngine4Trace();
 			//createmerge4Token();
 			//createTables4Token();
 			//truncate4Token();

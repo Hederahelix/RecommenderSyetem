@@ -1,4 +1,4 @@
-package caixing;
+package caixin;
 
 import java.io.BufferedWriter;
 import java.io.File;

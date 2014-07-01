@@ -1,4 +1,4 @@
-package caixing;
+package caixin;
 
 import java.io.BufferedReader;
 import java.io.FileInputStream;

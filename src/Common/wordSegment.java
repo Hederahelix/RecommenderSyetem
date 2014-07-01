@@ -88,7 +88,55 @@ public class wordSegment {
 	}
 	
 	public void segmentWordbyNlpir(ResultSet set,BufferedWriter[] bw,String splitChar) throws SQLException, IOException{
+		long startTime = System.currentTimeMillis();//获取当前时间	
+        String tempString;
+        int datenum,iid;
+        
+
+		int line = 1;
+		String token[];
+		while (set.next()) 
+        {
+			//将文章分词									   //contents
+			token = Nlpir.spliteword(set.getString(2), "utf-8"); 
+			HashMap<String, Integer> hm  = new HashMap<String, Integer>(); 
+			float sum = 0;//分词个数
+			
+			//统计分词个数   
+			for(int i=0;i<token.length;i++)
+		    {  
+		    	String temp = token[i];
+		    		
+		    	if(hm.containsKey(temp))
+		    		hm.put(temp, hm.get(temp)+1);	
+		    	else
+		    		hm.put(temp, 1);
+		    	sum++;
+		    	
+		    }
+		    //计算词频
+		    Iterator iter = hm.entrySet().iterator();
+
+			while (iter.hasNext()) 
+			{
+				Map.Entry<String, Integer> entry = (Map.Entry<String, Integer>) iter.next();
+				String key = entry.getKey();
+				float val = entry.getValue()/sum;
+				iid = set.getInt(1);
+				datenum = (int) Math.ceil((float)iid/30000);/////////////////////////////////
+				tempString = key.trim()+splitChar+val+splitChar+0+splitChar+iid+splitChar+1;
+				bw[datenum].write(tempString);
+				bw[datenum].newLine();//换行
+			}
+			line++;			
+				
+			
+        }//while
 		
+		
+
+		long endTime = System.currentTimeMillis();
+		System.out.println("处理10000文章  分词程序运行时间："+(endTime-startTime)/60000+"min");
 	}
 	
 	public void Segment4Content(String tableName,String[] files,String splitChar) throws SQLException, InterruptedException, IOException{

@@ -129,11 +129,69 @@ public class dat2Db {
 		conn.close();		
 	}
 	
+	public static void load4trace_all() throws SQLException{
+		long startTime,endTime;
+		
+		Connection conn = ConnectionSource.getConnection();
+		Statement stmt = conn.createStatement();
+		stmt.execute("DROP INDEX `index` ON trace_all;");
+		startTime = System.currentTimeMillis();//获取当前时间
+		stmt.execute("LOAD DATA LOCAL INFILE 'F:/data/splitefiles/file_all.txt' INTO TABLE trace_all FIELDS TERMINATED BY ' ' (uid,iid,time);");
+		
+		endTime = System.currentTimeMillis();//获取当前时间
+		System.out.println("没有索引插入 耗时："+(endTime-startTime)/60000+"min");
+		
+		startTime = System.currentTimeMillis();//获取当前时间
+		stmt.execute("CREATE INDEX `index` ON trace_all (uid,iid,time);");
+		endTime = System.currentTimeMillis();//获取当前时间
+		System.out.println(" 创建索引 耗时："+(endTime-startTime)/60000+"min");
+		
+		stmt.close();
+		conn.close();		
+	}
+	
+	public static void load4trace_merge() throws SQLException{
+		long startTime,endTime;
+		String tablename,sql;
+		Connection conn = ConnectionSource.getConnection();
+		Statement stmt = conn.createStatement();
+		sql = "CREATE TABLE IF NOT EXISTS trace_merge("
+	    		+"`id` int(11) NOT NULL AUTO_INCREMENT,"
+	    		+"`uid` int(11) NOT NULL,"
+	    		+"`iid` int(11) NOT NULL,"
+	    		+"`time` double NOT NULL,"
+	    		+"PRIMARY KEY (`id`),"
+	    		+"KEY `index` (`uid`,`iid`,`time`)"
+	    		+") ENGINE=MERGE UNION=(";
+		
+		for(int i=1;i<32;i++){
+			if(i<10)
+				tablename = "trace_00"+i;
+			else
+				tablename = "trace_0"+i;
+			
+			if(i==1)
+				sql += tablename;
+			else
+				sql += ","+tablename;
+			
+			stmt.execute("DROP INDEX `index` ON "+tablename+";");
+			stmt.execute("LOAD DATA LOCAL INFILE 'F:/data/splitefiles/file"+i+".txt' INTO TABLE "+tablename+" FIELDS TERMINATED BY ' ' (uid,iid,time);");
+			stmt.execute("CREATE INDEX `index` ON "+tablename+" (uid,iid,time);");
+			System.out.println(i);
+		}
+		sql+= ") INSERT_METHOD=LAST AUTO_INCREMENT=1;";
+		stmt.execute(sql);	
+		
+		stmt.close();
+		conn.close();		
+	}
+	
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
 		long startTime = System.currentTimeMillis();//获取当前时间
 		try {
-			load4token_all();
+			load4trace_merge();
 		} catch (SQLException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
