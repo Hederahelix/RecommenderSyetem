@@ -235,10 +235,10 @@ public class ItemCF {
 				
 		int userNum = 100;
 		PreparedStatement pst1 = conn.prepareStatement("select uid from uids where id>? limit "+userNum);//选择用户浏览的所有新闻
-		PreparedStatement pst2 = conn.prepareStatement("SELECT DISTINCT uid FROM "+traceTable+" WHERE iid = ?");
+		PreparedStatement pst2 = conn.prepareStatement("SELECT DISTINCT uid FROM "+traceTable+" WHERE iid = ? and type = 0");
 		
 		ConcurrentHashMap<Integer, Integer> iids = new ConcurrentHashMap<Integer, Integer>(); //iids
-		ConcurrentHashMap<Integer, String> hit2 = new ConcurrentHashMap<Integer, String>(); //iid uids
+		ConcurrentHashMap<Integer, String>  hit2 = new ConcurrentHashMap<Integer, String>(); //iid uids
 		
 		int uid,iid,iidnum =0,total; ResultSet set; String tmpstring; ResultSet userset;int[] uids;
 		
@@ -277,7 +277,7 @@ public class ItemCF {
 		
 		int j;
 		
-		for(int i=44;i*userNum<total;i++)
+		for(int i=45;i*userNum<total;i++)
 		{
 			pst1.setInt(1, i*userNum);
 			userset = pst1.executeQuery();//select uid from uids where uid>? limit 1000
@@ -622,11 +622,14 @@ class simTask implements Callable<Integer>{
 				hm2 = getTrace(iid2,hit2);//the users who looked the news iid2
 				if(hm1==null||hm2==null)
 				{
-					errorWriter.write("iid1 = "+iid1+" iid2 = "+iid2+" hm1 or hm2 is null");
+					errorWriter.write("iid1 = "+iid1+" iid2 = "+iid2+" hm1 or hm2 userids is null");
+					sim = 0;
+				}
+				else
+				{
+					sim = cal.calSimilarByTrace(hm1, hm2);
 				}
 				
-				
-				sim = cal.calSimilarByTrace(hm1, hm2);
 				jedis.setnx(key, ""+sim);
 			}
 			
@@ -675,10 +678,14 @@ class simTask implements Callable<Integer>{
 				hm2 = getToken(iid2,hit2);		
 				if(hm1==null||hm2==null)
 				{
-					errorWriter.write("iid1 = "+iid1+" iid2 = "+iid2+" hm1 or hm2 is null");
+					errorWriter.write("iid1 = "+iid1+" iid2 = "+iid2+" hm1 or hm2 token is null");
+					sim = 0; 
+				}else
+				{
+					sim = cal.calSimilarByText(hm1, hm2);
 				}
 					
-				sim = cal.calSimilarByText(hm1, hm2);
+				
 				jedis.setnx(key, ""+sim);
 			}
 			
@@ -796,6 +803,8 @@ class simTask implements Callable<Integer>{
 			pst1.setInt(1, uids[i]);
 			set = pst1.executeQuery();//get all the news which uid has look			
 			
+			System.out.println(id+"th thread "+i+"th user id = "+uids[i]+" num = "+newsnum);
+
 			for(int j=0;j<iidnum;j++)//all the news
 			{
 				iid2 = iids.get(j); 						
