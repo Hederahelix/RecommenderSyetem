@@ -8,10 +8,10 @@ import java.sql.Statement;
 
 public class TablesManger {
 	
-	public static void queryTables(String[] sql) throws SQLException{
+	public void queryTables(String[] sql) throws SQLException{
 		Connection conn = ConnectionSource.getConnection();
     	Statement stmt = conn.createStatement();
-    	for(int i=1;i<sql.length;i++)
+    	for(int i=0;i<sql.length;i++)
     	{
     		
     		System.out.println("line "+i);
@@ -22,7 +22,7 @@ public class TablesManger {
     	conn.close();
 	}
 	
-	public static void createmergeTable(String tableName,String tableStruct,String subTableName,int subTableCount) throws SQLException{
+	public void createmergeTable(String tableName,String tableStruct,String subTableName,int subTableCount) throws SQLException{
 		Connection conn = ConnectionSource.getConnection();
 		Statement stmt = conn.createStatement();
 		/*"CREATE TABLE IF NOT EXISTS trace_merge("
@@ -35,17 +35,13 @@ public class TablesManger {
 	    		+") ENGINE=MERGE UNION=(";
 		 */
 		String tablename,sql = "CREATE TABLE IF NOT EXISTS "+tableName+"("+tableStruct+") ENGINE=MERGE UNION=(";
+		Common.dat2Db db = new Common.dat2Db();
 		
-		for(int i=1;i<subTableCount;i++)
+		for(int i=0;i<subTableCount;i++)
 		{
-			if(i<10)
-				tablename = subTableName+"_00"+i;
-			if(i<100)
-				tablename = subTableName+"_0"+i;
-			else
-				tablename = subTableName+"_"+i;
+			tablename = db.getTablesName(subTableName, i); 
 			
-			if(i==1)
+			if(i==0)
 				sql += tablename;
 			else
 				sql += ","+tablename;
@@ -59,54 +55,47 @@ public class TablesManger {
 	}
 	
 	
-	public static void changeEngine4Trace(int subTableCount) throws SQLException{
+	public void changeEngine4Trace(int subTableCount) throws SQLException{
 		String[] sql = new String[subTableCount];
-
-    	for(int i=1;i<subTableCount;i++)
+		String tableName;
+		Common.dat2Db db = new Common.dat2Db();
+		
+    	for(int i=0;i<subTableCount;i++)
     	{
-    		if(i<10)
-    			sql[i] = "alter table trace_00"+i+" engine=myisam;";
-    		if(i<100)
-				sql[i] = "alter table trace_0"+i+" engine=myisam;";
-    		else
-    			sql[i] = "alter table trace_"+i+" engine=myisam;";
+    		tableName = db.getTablesName("trace", i);
+    		sql[i] = "alter table "+tableName+" engine=myisam;";
     	}
 
     			
     	queryTables(sql);
 	}
 	
-	public static void truncate4Token(int subTableCount) throws SQLException{
+	public void truncate4Token(int subTableCount) throws SQLException{
 		String[] sql = new String[subTableCount];
-
-    	for(int i=1;i<subTableCount;i++)
+		String tableName;
+		Common.dat2Db db = new Common.dat2Db();
+		
+    	for(int i=0;i<subTableCount;i++)
     	{
-    		if(i<10)
-    			sql[i] = "truncate token_00"+i+";";
-    		if(i<100)
-				sql[i] = "truncate token_0"+i+";";
-    		else
-    			sql[i] = "truncate token_"+i+";";
+    		tableName = db.getTablesName("token", i);
+    		
+    		sql[i] = "truncate "+tableName;
     	}
 
     			
     	queryTables(sql);
 	}
 	
-	public static void calSum(String subTableName,int subTableCount) throws SQLException{
+	public void calSum(String subTableName,int subTableCount) throws SQLException{
 		Connection conn = ConnectionSource.getConnection();
     	Statement stmt = conn.createStatement();
     	int num,sum = 0; 
     	String tableName;
+    	Common.dat2Db db = new Common.dat2Db();
     	
-    	for(int i=1;i<subTableCount;i++)
+    	for(int i=0;i<subTableCount;i++)
     	{
-    		if(i<10)
-    			tableName = subTableName+"_00"+i;
-    		if(i<100)
-    			tableName = subTableName+"_0"+i;
-    		else
-    			tableName = subTableName+"_"+i;
+    		tableName = db.getTablesName(subTableName, i);
     		
     		ResultSet set = stmt.executeQuery("select count(id) from "+tableName);
     		set.next();
@@ -121,7 +110,22 @@ public class TablesManger {
 
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
-		
+		String[] sql = new String[31];
+		String tableName;
+    	Common.dat2Db db = new Common.dat2Db();
+    	TablesManger tm = new TablesManger();
+		for(int i=0;i<31;i++)
+		{
+			tableName = db.getTablesName("trace", i);
+			sql[i] = "create table "+tableName+" like trace";
+			System.out.println(sql[i]); 
+		}
+		try {
+			tm.queryTables(sql);
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 
 }

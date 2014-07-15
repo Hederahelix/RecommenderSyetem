@@ -1,4 +1,4 @@
-package Common;
+package test;
 
 import java.io.BufferedReader;
 import java.io.FileInputStream;
@@ -72,16 +72,6 @@ public class dat2Db {
 		
 	}
 	
-	public String getTablesName(String tableName,int tableCount){
-		String tablename;
-		if(tableCount+1<10)
-			tablename = tableName+"_00"+(tableCount+1);
-		else if(tableCount+1<100)
-			tablename = tableName+"_0"+(tableCount+1);
-		else
-			tablename = tableName+"_"+(tableCount+1);
-		return tablename;
-	}
 
 	public void loadwithoutindex(String[] dropIndex,String[] createIndex,String[] loadsql) throws SQLException{
 		long startTime,endTime;
@@ -133,7 +123,7 @@ public class dat2Db {
 		String[] createIndex={"CREATE INDEX `index1` ON token_all (iid,type);","CREATE INDEX `index2` ON token_all (token);","CREATE INDEX `index3` ON token_all (tfidf,iid);"};
 		String[] loadsql = new String[fileName.length]; 
 		
-		for(int i=0;i<fileName.length;i++)
+		for(int i=1;i<fileName.length;i++)
 			loadsql[i] = "LOAD DATA LOCAL INFILE '"+fileName+"' INTO TABLE token_all FIELDS TERMINATED BY '"+spliteChar+"' (token,tf,tfidf,iid,type);";
 		
 		loadwithoutindex(dropIndex,createIndex,loadsql);
@@ -157,20 +147,20 @@ public class dat2Db {
 		String[] createIndex = new String[fileName.length]; 
 		String[] loadsql = new String[fileName.length]; 
 		String tablename;
+		Common.dat2Db db = new Common.dat2Db();
 		Common.TablesManger tm = new Common.TablesManger();
-		
 		for(int i=0;i<fileName.length;i++)
 		{
-			tablename = getTablesName("trace",i);
-			
+			tablename = db.getTablesName("trace",i); 
 			dropIndex[i] = "DROP INDEX `index` ON "+tablename+";";
-			loadsql[i] = "LOAD DATA LOCAL INFILE '"+fileName+"' INTO TABLE "+tablename+" FIELDS TERMINATED BY '"+spliteChar+"' (uid,iid,time);";
+			loadsql[i] = "LOAD DATA LOCAL INFILE '"+fileName[i]+"' INTO TABLE "+tablename+" FIELDS TERMINATED BY '"+spliteChar+"' (uid,iid,time);";
+			System.out.println(loadsql[i]);
 			createIndex[i] = "CREATE INDEX `index` ON "+tablename+" (uid,iid,time);";
 		}
 			
 		
 		loadwithoutindex(dropIndex,createIndex,loadsql);
-		
+		//loadwithoutindex(null,createIndex,loadsql);
 		//´´½¨MERGE±í
 		String tableStruct = "`id` int(11) NOT NULL AUTO_INCREMENT,"
 	    		+"`uid` int(11) NOT NULL,"
@@ -185,8 +175,41 @@ public class dat2Db {
 	
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
+		/*String[] files = {"F:/data/splitefiles/file_all.txt"};
+		try {
+			load4trace_all(files," ");
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}*/
 		
+		String[] files = new String[31]; 
+		for(int i=0;i<31;i++)
+		{
+			files[i] = "F:/data/splitefiles/file"+(i+1)+".txt";
+		}
 		
+		/*dat2Db db = new dat2Db();
+		try {
+			db.load4trace_merge(files," ");
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}*/
+		Common.TablesManger tm = new Common.TablesManger();
+		String tableStruct = "`id` int(11) NOT NULL AUTO_INCREMENT,"
+	    		+"`uid` int(11) NOT NULL,"
+	    		+"`iid` int(11) NOT NULL,"
+	    		+"`time` double NOT NULL,"
+	    		+"PRIMARY KEY (`id`),"
+	    		+"KEY `index` (`uid`,`iid`,`time`)";
+		
+		try {
+			tm.createmergeTable("trace_merge", tableStruct, "trace", files.length);
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 
 }

@@ -139,6 +139,58 @@ public class wordSegment {
 		System.out.println("处理10000文章  分词程序运行时间："+(endTime-startTime)/60000+"min");
 	}
 	
+	public void segmentWordbyNlpir2(ResultSet set,BufferedWriter bw,String splitChar) throws SQLException, IOException{
+		long startTime = System.currentTimeMillis();//获取当前时间	
+        String tempString;
+        int datenum,iid;
+        
+
+		int line = 1;
+		String token[];
+		while (set.next()) 
+        {
+			//将文章分词									   //contents
+			token = Nlpir.spliteword(set.getString(2), "utf-8"); 
+			HashMap<String, Integer> hm  = new HashMap<String, Integer>(); 
+			float sum = 0;//分词个数
+			
+			//统计分词个数   
+			for(int i=0;i<token.length;i++)
+		    {  
+		    	String temp = token[i];
+		    		
+		    	if(hm.containsKey(temp))
+		    		hm.put(temp, hm.get(temp)+1);	
+		    	else
+		    		hm.put(temp, 1);
+		    	sum++;
+		    	
+		    }
+		    //计算词频
+		    Iterator iter = hm.entrySet().iterator();
+
+			while (iter.hasNext()) 
+			{
+				Map.Entry<String, Integer> entry = (Map.Entry<String, Integer>) iter.next();
+				String key = entry.getKey();
+				float val = entry.getValue()/sum;
+				iid = set.getInt(1);
+
+				tempString = key.trim()+splitChar+val+splitChar+0+splitChar+iid+splitChar+1;
+				bw.write(tempString);
+				bw.newLine();//换行
+			}
+			line++;			
+				
+			
+        }//while
+		
+		
+
+		long endTime = System.currentTimeMillis();
+		System.out.println("处理10000文章  分词程序运行时间："+(endTime-startTime)/60000+"min");
+	}
+	
 	public void Segment4Content(String tableName,String[] files,String splitChar) throws SQLException, InterruptedException, IOException{
 
 		Connection conn = ConnectionSource.getConnection();
@@ -153,7 +205,7 @@ public class wordSegment {
 		
 		int totalfile = files.length;
 		BufferedWriter[] bw = new BufferedWriter[totalfile];
-        for(int i=1;i<totalfile;i++)
+        for(int i=0;i<totalfile;i++)
         {
         	bw[i] = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(files[i]), "UTF-8"));       	
         }
@@ -163,11 +215,14 @@ public class wordSegment {
 		{
 			pst.setInt(1, i*10000);
 			set = pst.executeQuery();
-			segmentWordbyPd(set,bw,splitChar); 
+			if(bw.length == 1)
+				segmentWordbyNlpir2(set,bw[0],splitChar); 
+			else
+				segmentWordbyNlpir(set,bw,splitChar);
 			set.close();
 		}
 		
-		for(int i=1;i<totalfile;i++)
+		for(int i=0;i<totalfile;i++)
         {
 			bw[i].flush();
         	bw[i].close();  
@@ -176,10 +231,80 @@ public class wordSegment {
 	    ConnectionSource.closeAll(pst,conn);
 	}
 	
+	public void multiSegment4Content(String tableName,String[] files,String splitChar) throws SQLException, InterruptedException, IOException{
+		ExecutorService threadPool = Executors.newCachedThreadPool();  
+		
+		Connection conn = ConnectionSource.getConnection();
+		PreparedStatement pst = conn.prepareStatement("select iid,contents from "+tableName+" where id > ? limit 10000");
+		
+		//内容总数
+		Statement st = conn.createStatement();
+		ResultSet set = st.executeQuery("select count(id) from "+tableName);
+		set.next();
+		int total = set.getInt(1);//新闻总数
+		set.close();
+		st.close();
+		
+
+		Semaphore semp = new Semaphore(10);
+		
+		for(int i=0;i*10000<total;i++)
+		{
+			pst.setInt(1, i*10000);
+			set = pst.executeQuery();
+			semp.acquire();//等待有线程完成任务，再新建新的任务
+			threadPool.submit(new segmentTask(i,set,semp));
+			set.close();
+		}
+		
+		
+	    
+		threadPool.shutdown();
+	    ConnectionSource.closeAll(pst,conn);
+	    System.out.println("phase 2");
+	    
+	    while(!threadPool.awaitTermination(2, TimeUnit.SECONDS)){
+	    	
+        }
+		
+	}
+	
 	
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
 		
 	}
 
+}
+
+class segmentTask implements Callable<Integer>{
+	private int id;
+	private ResultSet set;
+	private Semaphore semp;
+	private String tmpfile;
+	
+	public segmentTask(int id,ResultSet set,Semaphore semp){
+		this.set = set;
+		this.id = id;
+		this.semp = semp;
+		tmpfile = "D:/data/tmp/"+id+".txt"; 
+	}
+	
+	//set.getInt(1),set.getString(2)
+	public Integer call() throws SQLException, IOException{
+		
+		long startTime = System.currentTimeMillis();//获取当前时间
+		
+		BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(tmpfile), "UTF-8"));       	
+        wordSegment ws = new wordSegment();
+        ws.segmentWordbyNlpir2(set, bw, "\t");
+        bw.flush();
+        bw.close();
+        
+		long endTime = System.currentTimeMillis();
+		System.out.println("id="+id+"  程序运行时间："+(endTime-startTime)+"ms");
+		semp.release();
+		return 1;
+		    
+	 }
 }
