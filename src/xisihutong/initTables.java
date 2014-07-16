@@ -7,7 +7,7 @@ public class initTables {
 	public void initNews(String filename,String Regex)
 	{
 		try {
-			new Common.initTables().initNews("news4xisihutong", filename, Regex);
+			new RecommendSystem.initTables().initNews("news4xisihutong", filename, Regex);
 		} catch (SQLException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();

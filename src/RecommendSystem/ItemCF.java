@@ -1,4 +1,4 @@
-package Common;
+package RecommendSystem;
 
 import java.io.BufferedWriter;
 import java.io.FileNotFoundException;
@@ -15,6 +15,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -272,12 +273,12 @@ public class ItemCF {
 		
 		System.out.println("准备阶段结束");
 		
-		Semaphore semp = new Semaphore(20);
+		Semaphore semp = new Semaphore(1);
 		ExecutorService threadPool = Executors.newFixedThreadPool(20);
 		
 		int j;
 		
-		for(int i=0;i*userNum<total;i++)
+		for(int i=45;i*userNum<total;i++)
 		{
 			pst1.setInt(1, i*userNum);
 			userset = pst1.executeQuery();//select uid from uids where uid>? limit 1000
@@ -306,7 +307,7 @@ public class ItemCF {
 	    System.out.println("phase 2");
 	    
 	    while(!threadPool.awaitTermination(1, TimeUnit.MINUTES)){
-	    	System.out.println("phase 2");
+	    	
         }
 	    
 	    //redisUtil.destory();
@@ -489,7 +490,6 @@ class simTask implements Callable<Integer>{
 	private ConcurrentHashMap<Integer, Integer> iids;
 	private Semaphore semp;
 	private ItemCF iCF;
-	private Calculate cal;
 	private int usernum;
 	private String traceTable;
 	private String recommendFile;
@@ -521,7 +521,6 @@ class simTask implements Callable<Integer>{
 		this.recommendFile = recommendFile;
 		this.weightFile = weightFile;
 		iCF = new ItemCF();
-		cal = new Calculate();
 		jedis = redisUtil.getJedis();
 		newsWeight = new ArrayList<Float>();
 		jhit = 0;
@@ -587,6 +586,32 @@ class simTask implements Callable<Integer>{
 		return finalsim;
 	}
 	
+	public float calSimilarByTrace(ArrayList<Integer> hm1,ArrayList<Integer> hm2)
+	{
+		
+		float similar = 0;
+		int tmp1,tmp2,tmp3 = 0;
+		Iterator iter;
+		
+		//计算两个文章的相似度
+		tmp1 = hm1.size();
+		tmp2 = hm2.size();
+		
+		tmp3 = 0;
+		iter = hm1.iterator();
+		while (iter.hasNext()) 
+		{
+			if(hm2.contains(iter.next()))
+			{
+				tmp3++;
+			}
+		}
+		
+		similar = tmp2/(tmp1+tmp2-tmp3);
+
+		return similar;
+	}
+	
 	public float calSimbyTrace(int iid2,ResultSet lookedNews) throws SQLException, IOException
 	{
 		float finalsim = 0,sim;
@@ -627,7 +652,7 @@ class simTask implements Callable<Integer>{
 				}
 				else
 				{
-					sim = cal.calSimilarByTrace(hm1, hm2);
+					sim = calSimilarByTrace(hm1, hm2);
 				}
 				
 				jedis.setnx(key, ""+sim);
@@ -643,6 +668,43 @@ class simTask implements Callable<Integer>{
 	
 		finalsim = finalsim/num;	
 		return finalsim;
+	}
+	
+	public float calSimilarByText(HashMap<String, Float> hm1,HashMap<String, Float> hm2)
+	{
+		
+		float similar = 0,tmp1,tmp2,tmp3;
+		Iterator iter;
+		Map.Entry<String, Float> entry;
+		
+		//计算两个文章的相似度
+		tmp1 = tmp2 = tmp3 = 0;
+		iter = hm1.entrySet().iterator();
+		while (iter.hasNext()) 
+		{
+			entry = (Map.Entry<String, Float>) iter.next();
+			String key = entry.getKey();
+			tmp2 += Math.pow(entry.getValue(),2);//x1*x1
+			if(hm2.containsKey(key))
+			{
+				tmp1 += entry.getValue()*(hm2.get(key));//x1*x2
+				
+			}
+		}
+		
+		tmp2 = (float) Math.sqrt(tmp2);
+		iter = hm2.entrySet().iterator();
+		while (iter.hasNext()) 
+		{
+			entry = (Map.Entry<String, Float>) iter.next();
+			tmp3 += Math.pow(entry.getValue(),2);//x2*x2
+		}
+		tmp3 = (float) Math.sqrt(tmp3);
+		
+		similar = tmp1/(tmp2*tmp3);
+
+	//	System.out.println(similar);
+		return similar;
 	}
 	
 	public float calSimbyText(int iid2,ResultSet lookedNews) throws SQLException, IOException
@@ -682,7 +744,7 @@ class simTask implements Callable<Integer>{
 					sim = 0; 
 				}else
 				{
-					sim = cal.calSimilarByText(hm1, hm2);
+					sim = calSimilarByText(hm1, hm2);
 				}
 					
 				
@@ -774,83 +836,76 @@ class simTask implements Callable<Integer>{
 		return weightlist;
 	}
 	
-	public Integer call(){	
+	public Integer call() throws SQLException, IOException{	
 		long startTime,endTime,midTime;		
 		startTime = System.currentTimeMillis();//获取当前时间
-		try {
-			Connection conn = ConnectionSource.getConnection();
-			PreparedStatement pst1;
-			pst1 = conn.prepareStatement("select iid from "+traceTable+" where uid=? and type=0");
-			//选择用户浏览的所有新闻
-			PreparedStatement pst2 = conn.prepareStatement("select count(iid) from "+traceTable+" where uid=? and type=0");//选择用户浏览的所有新闻
-			ResultSet set; int newsnum = 0;
-			int iid2; float finalsim = 0;
-			String recommendlist="",weightlist="";
+		Connection conn = ConnectionSource.getConnection();
+		PreparedStatement pst1 = conn.prepareStatement("select iid from "+traceTable+" where uid=? and type=0");//选择用户浏览的所有新闻
+		PreparedStatement pst2 = conn.prepareStatement("select count(iid) from "+traceTable+" where uid=? and type=0");//选择用户浏览的所有新闻
+		ResultSet set; int newsnum = 0;
+		int iid2; float finalsim = 0;
+		String recommendlist="",weightlist="";
+		
+		jhitOld = 0;
+		for(int i=0;i<usernum;i++)//for all user
+		{
+			if(uids[i]==-1)
+				break;
 			
-			jhitOld = 0;
-			for(int i=0;i<usernum;i++)//for all user
+			midTime = System.currentTimeMillis();//获取当前时间
+			initRecomiids();//init recommend list for new user
+			
+			
+			pst2.setInt(1, uids[i]);
+			set = pst2.executeQuery();//get all the news which uid has look		
+			set.next();
+			newsnum = set.getInt(1);
+			set.close();
+			
+			pst1.setInt(1, uids[i]);
+			set = pst1.executeQuery();//get all the news which uid has look			
+			
+			System.out.println(id+"th thread "+i+"th user id = "+uids[i]+" num = "+newsnum);
+
+			for(int j=0;j<iidnum;j++)//all the news
 			{
-				if(uids[i]==-1)
-					break;
-				
-				midTime = System.currentTimeMillis();//获取当前时间
-				initRecomiids();//init recommend list for new user
-				
-				
-				pst2.setInt(1, uids[i]);
-				set = pst2.executeQuery();//get all the news which uid has look		
-				set.next();
-				newsnum = set.getInt(1);
-				set.close();
-				
-				pst1.setInt(1, uids[i]);
-				set = pst1.executeQuery();//get all the news which uid has look			
-				
-				System.out.println(id+"th thread "+i+"th user id = "+uids[i]+" num = "+newsnum);
-	
-				for(int j=0;j<iidnum;j++)//all the news
-				{
-					iid2 = iids.get(j); 						
-					finalsim = calSim(iid2,set);
-					set.beforeFirst();
-					newsWeight.add(finalsim);
-					addRecomiids(iid2,finalsim);			
-				}//所有新闻
+				iid2 = iids.get(j); 						
+				finalsim = calSim(iid2,set);
+				set.beforeFirst();
+				newsWeight.add(finalsim);
+				addRecomiids(iid2,finalsim);			
+			}//所有新闻
+		
+			endTime = System.currentTimeMillis();
+			System.out.println(id+"th thread "+i+"th user rows num = "+newsnum+" rows allnews = "+iidnum*newsnum+" hit = "
+					+((float)(jhit-jhitOld))/(iidnum*newsnum)+" cost time = "+(endTime-midTime)+"ms");
 			
-				endTime = System.currentTimeMillis();
-				System.out.println(id+"th thread "+i+"th user rows num = "+newsnum+" rows allnews = "+iidnum*newsnum+" hit = "
-						+((float)(jhit-jhitOld))/(iidnum*newsnum)+" cost time = "+(endTime-midTime)+"ms");
-				
-				midTime = endTime;jhitOld = jhit;
-				
-				recommendlist += printRecomiids(uids[i]);
-				weightlist += printWeights(uids[i]);
-				
-				newsWeight.clear();
-				set.close();
-			}
-			//print recommend list
+			midTime = endTime;jhitOld = jhit;
 			
-			lock.lock();
-			FileWriter writer1 = new FileWriter(recommendFile, true);  
-			FileWriter writer2 = new FileWriter(weightFile, true);  
-			try {
-				 writer1.write(recommendlist);  
-				 writer2.write(weightlist);  
-			}
-			finally {
-			  writer1.close();
-			  writer2.close();
-			  lock.unlock();
-			}
+			recommendlist += printRecomiids(uids[i]);
+			weightlist += printWeights(uids[i]);
 			
-			pst1.close();
-	        conn.close();
-	        errorWriter.close();
-		} catch (SQLException | IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			newsWeight.clear();
+			set.close();
 		}
+		//print recommend list
+		
+		lock.lock();
+		FileWriter writer1 = new FileWriter(recommendFile, true);  
+		FileWriter writer2 = new FileWriter(weightFile, true);  
+		try {
+			 writer1.write(recommendlist);  
+			 writer2.write(weightlist);  
+		}
+		finally {
+		  writer1.close();
+		  writer2.close();
+		  lock.unlock();
+		}
+		
+		pst1.close();
+        conn.close();
+        errorWriter.close();
 
 		redisUtil.returnResource(jedis);
         
