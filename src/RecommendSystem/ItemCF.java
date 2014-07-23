@@ -81,61 +81,6 @@ public class ItemCF {
 		pst2.close();
 		conn.close();
 	}
-	/*
-	public void add2hit1(int iid1,int iid2,float sim,ConcurrentHashMap<String, Float> hit1) 
-	{
-		int tmp;
-		String key;
-		if(iid1<iid2)
-		{
-			tmp = iid1;
-			iid1 = iid2;
-			iid2 = tmp;
-		}
-		key = iid1+" "+iid2;
-		hit1.put(key, sim);
-	}
-	
-	public float hit1(int iid1,int iid2,ConcurrentHashMap<String, Float> hit1) 
-	{
-		int tmp;
-		String key;
-		if(iid1<iid2)
-		{
-			tmp = iid1;
-			iid1 = iid2;
-			iid2 = tmp;
-		}
-		key = iid1+" "+iid2;
-		if(hit1.containsKey(key))
-			return hit1.get(key);
-		else
-			return -1;
-	}
-	
-	public HashMap<String, Float> hit2(int iid1,ConcurrentHashMap<Integer, String> hm1) 
-	{
-		
-		if(hm1.containsKey(iid1))
-		{
-			HashMap<String, Float> res = new HashMap<String, Float>();
-			String tmp = hm1.get(iid1);//{token,tfidf}
-			Pattern p = Pattern.compile("\\{(.*?) (.*?)\\}");
-			Matcher matcher = p.matcher(tmp);
-
-            while(matcher.find()) 
-            {
-            	res.put(matcher.group(1).trim(), Float.parseFloat(matcher.group(2).trim()));
-            }
-
-            
-            	
-			return res;
-		}
-			
-		else
-			return null;
-	}*/
 	
 	public void calMultiEffect(String traceTable,String tokenTable,String recommendFile,String weightFile,int itemNum) throws SQLException, InterruptedException{
 		Connection conn = ConnectionSource.getConnection();
@@ -319,164 +264,6 @@ public class ItemCF {
 	    
 	}
 	
-	/*//根据uid计算uid相似集合
-	public void calEffect() throws SQLException{
-		//10000个用户
-		float accur,tmpaccur;
-		accur = 0;
-		int maxuid,minuid,uid;
-		Connection conn = ConnectionSource.getConnection();
-		Statement st = conn.createStatement();
-		st.execute("create temporary table uids (id int(11) not null AUTO_INCREMENT,uid int(11) not null,primary key (id))  select distinct uid from trace4caixin;");//uid
-		st.execute("create temporary table usersatis (id int(11) not null AUTO_INCREMENT,uid int(11) not null,satis float not null,primary key (id)) ENGINE=MEMORY");
-		st.execute("create temporary table result (id int(11) not null AUTO_INCREMENT,uid int(11) not null,iid int(11) not null,primary key (id),INDEX  index4iid(iid)) ENGINE=MEMORY");
-		st.execute("create temporary table uidres (id int(11) not null AUTO_INCREMENT,iid int(11) not null,sim float not null,primary key (id),INDEX  index4iid(iid)) ENGINE=MEMORY");
-		
-		
-		PreparedStatement pst1 = conn.prepareStatement("select iid from trace4caixin where uid=? and type=0");//选择用户浏览的所有新闻
-		PreparedStatement pst2 = conn.prepareStatement("select iid from news4caixin");//所有新闻
-		PreparedStatement pst3 = conn.prepareStatement("insert into result values (null,?,?)");//所有新闻
-		PreparedStatement pst4 = conn.prepareStatement("select iid from trace4caixin where uid=? and type=1");//选择用户浏览的所有新闻
-		PreparedStatement pst5 = conn.prepareStatement("insert into uidres values (null,?,?)");//选择用户浏览的所有新闻
-		
-		
-		ResultSet set,set2;//新闻总数
-
-		
-		set = st.executeQuery("SELECT MAX(uid),MIN(uid) FROM uids");//用户
-		set.next();
-		maxuid = set.getInt(1);
-		minuid = set.getInt(2);
-		set.close();
-	
-		
-		ArrayList res;
-		int useriid;
-		
-		long startTime,endTime;
-		startTime = System.currentTimeMillis();//获取当前时间
-		//-----
-		uid = (int)(minuid+Math.random()*(maxuid-minuid+1));//随机选取uid
-		set = st.executeQuery("SELECT uid FROM uids where uid>"+uid+" limit 1");//用户
-		set.next();
-		uid = set.getInt(1);
-		set.close();
-		
-		pst4.setInt(1, uid);//查找uid用户的所有新闻
-		set = pst4.executeQuery();//select * from trace4caixin where uid=? and type=1
-		set.next();
-		useriid = set.getInt(1);
-		set.close();
-		
-		pst1.setInt(1, uid);//查找uid用户的所有新闻
-		set = pst1.executeQuery();//select * from trace4caixin where uid=? and type=0
-		
-		Calculate cal = new Calculate();
-		float sim,maxsim=0;
-		int newsnum=0;
-		maxsim=0;
-		int num=0;
-		set2 = st.executeQuery("select iid from news4caixin");
-		while(set2.next())
-		{
-			set.beforeFirst();
-			String iid1 = set2.getString(1);
-			sim = 0;
-			newsnum = 0;
-			System.out.print("num:"+num);
-			while(set.next())//uid度过的所有新闻
-			{
-				String iid2 = set.getString(1);
-				if(!iid1.equals(iid2))
-				{
-					System.out.print(" iid1:"+iid1+" iid2:"+iid2);
-					sim += cal.calSimilarByText("token4caixin",iid1,iid2);
-					System.out.println(" sim:"+ sim);
-				}
-				
-				newsnum++;
-			}
-			
-			sim = sim/newsnum;//iid1和uid的相识度
-			pst5.setInt(1, Integer.parseInt(iid1));
-			pst5.setFloat(2, sim);
-			pst5.executeUpdate();
-			//pst5.addBatch();
-			num++;
-			if(num%5000==0)
-			{
-				pst5.executeBatch();   
-		        conn.commit();   
-		        pst5.clearBatch();
-			}
-			
-		}
-		pst5.executeBatch();   
-        conn.commit();   
-        pst5.clearBatch();
-        
-		set2.close();
-		
-		
-		set = st.executeQuery("select distinct iid from uidres order by sim desc limit 30;");
-		while(set.next())
-		{
-			String iid = ""+set.getInt(1);
-			if(iid.equals(useriid))
-			{
-				
-			}
-			newsnum++;
-		}
-		
-		
-		 endTime = System.currentTimeMillis();//获取当前时间
-		System.out.println(5000+" 耗时："+(endTime-startTime)+"ms");
-		//-----
-		
-		
-		for(int num=0;num<1000;num++)
-		{
-			uid = (int)(minuid+Math.random()*(maxuid-minuid+1));//随机选取uid
-			
-			pst4.setInt(1, uid);//查找uid用户的所有新闻
-			set = pst1.executeQuery();//select * from trace4caixin where uid=? and type=0
-			useriid = set.getInt(1);
-			set.close();
-			
-			pst1.setInt(1, uid);//查找uid用户的所有新闻
-			set = pst1.executeQuery();//select * from trace4caixin where uid=? and type=0
-			
-			
-			for(int i=0;i*10000<total;i++)
-			{
-				pst2.setInt(1, i*10000);//select iid from iids where id > ? limit 10000
-				set2 = pst2.executeQuery();//查找所有新闻
-				res = calSimilar(set,set2,useriid);
-				//取出res插入数据库
-				set2.close();
-			}
-			set.close();
-		}
-		
-		
-		
-		st.execute("drop table uids;");
-		st.execute("drop table result;");
-		st.execute("drop table usersatis;");
-		st.execute("drop table uidres;");
-		
-		pst1.close();
-		pst2.close();
-		pst3.close();
-		pst4.close();
-		pst5.close();
-		
-		conn.close();
-	}
-	*/
-	public static void main(String[] args) {
-	}
 }
 
 class simTask implements Callable<Integer>{
@@ -836,12 +623,20 @@ class simTask implements Callable<Integer>{
 		return weightlist;
 	}
 	
-	public Integer call() throws SQLException, IOException{	
+	public Integer call(){	
 		long startTime,endTime,midTime;		
 		startTime = System.currentTimeMillis();//获取当前时间
-		Connection conn = ConnectionSource.getConnection();
-		PreparedStatement pst1 = conn.prepareStatement("select iid from "+traceTable+" where uid=? and type=0");//选择用户浏览的所有新闻
-		PreparedStatement pst2 = conn.prepareStatement("select count(iid) from "+traceTable+" where uid=? and type=0");//选择用户浏览的所有新闻
+		Connection conn = null;
+		PreparedStatement pst1 = null,pst2 = null;
+		try{
+			conn = ConnectionSource.getConnection();
+			pst1 = conn.prepareStatement("select iid from "+traceTable+" where uid=? and type=0");//选择用户浏览的所有新闻
+			pst2 = conn.prepareStatement("select count(iid) from "+traceTable+" where uid=? and type=0");//选择用户浏览的所有新闻
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
 		ResultSet set; int newsnum = 0;
 		int iid2; float finalsim = 0;
 		String recommendlist="",weightlist="";
@@ -855,57 +650,79 @@ class simTask implements Callable<Integer>{
 			midTime = System.currentTimeMillis();//获取当前时间
 			initRecomiids();//init recommend list for new user
 			
+			try{
+				pst2.setInt(1, uids[i]);
+				set = pst2.executeQuery();//get all the news which uid has look		
+				set.next();
+				newsnum = set.getInt(1);
+				set.close();
+				
+				pst1.setInt(1, uids[i]);
+				set = pst1.executeQuery();//get all the news which uid has look			
+				
+				System.out.println(id+"th thread "+i+"th user id = "+uids[i]+" num = "+newsnum);
+	
+				for(int j=0;j<iidnum;j++)//all the news
+				{
+					iid2 = iids.get(j); 						
+					finalsim = calSim(iid2,set);
+					set.beforeFirst();
+					newsWeight.add(finalsim);
+					addRecomiids(iid2,finalsim);			
+				}//所有新闻
 			
-			pst2.setInt(1, uids[i]);
-			set = pst2.executeQuery();//get all the news which uid has look		
-			set.next();
-			newsnum = set.getInt(1);
-			set.close();
-			
-			pst1.setInt(1, uids[i]);
-			set = pst1.executeQuery();//get all the news which uid has look			
-			
-			System.out.println(id+"th thread "+i+"th user id = "+uids[i]+" num = "+newsnum);
-
-			for(int j=0;j<iidnum;j++)//all the news
-			{
-				iid2 = iids.get(j); 						
-				finalsim = calSim(iid2,set);
-				set.beforeFirst();
-				newsWeight.add(finalsim);
-				addRecomiids(iid2,finalsim);			
-			}//所有新闻
-		
-			endTime = System.currentTimeMillis();
-			System.out.println(id+"th thread "+i+"th user rows num = "+newsnum+" rows allnews = "+iidnum*newsnum+" hit = "
-					+((float)(jhit-jhitOld))/(iidnum*newsnum)+" cost time = "+(endTime-midTime)+"ms");
-			
-			midTime = endTime;jhitOld = jhit;
-			
-			recommendlist += printRecomiids(uids[i]);
-			weightlist += printWeights(uids[i]);
-			
-			newsWeight.clear();
-			set.close();
+				endTime = System.currentTimeMillis();
+				System.out.println(id+"th thread "+i+"th user rows num = "+newsnum+" rows allnews = "+iidnum*newsnum+" hit = "
+						+((float)(jhit-jhitOld))/(iidnum*newsnum)+" cost time = "+(endTime-midTime)+"ms");
+				
+				midTime = endTime;jhitOld = jhit;
+				
+				recommendlist += printRecomiids(uids[i]);
+				weightlist += printWeights(uids[i]);
+				
+				newsWeight.clear();
+				set.close();
+			} catch (SQLException | IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 		}
 		//print recommend list
 		
 		lock.lock();
-		FileWriter writer1 = new FileWriter(recommendFile, true);  
-		FileWriter writer2 = new FileWriter(weightFile, true);  
+		FileWriter writer1 = null,writer2 = null;
 		try {
+			 writer1 = new FileWriter(recommendFile, true);  
+			 writer2 = new FileWriter(weightFile, true);  
 			 writer1.write(recommendlist);  
 			 writer2.write(weightlist);  
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
 		}
 		finally {
-		  writer1.close();
-		  writer2.close();
+		  try {
+			writer1.close();
+			writer2.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		  
 		  lock.unlock();
 		}
 		
-		pst1.close();
-        conn.close();
-        errorWriter.close();
+		try {
+			pst1.close();
+			pst2.close();
+			conn.close();
+			errorWriter.close();
+		} catch (SQLException | IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+        
+       
 
 		redisUtil.returnResource(jedis);
         

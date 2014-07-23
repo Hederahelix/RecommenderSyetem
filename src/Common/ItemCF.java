@@ -522,7 +522,7 @@ class simTask implements Callable<Integer>{
 		this.weightFile = weightFile;
 		iCF = new ItemCF();
 		cal = new Calculate();
-		jedis = redisUtil.getJedis();
+		
 		newsWeight = new ArrayList<Float>();
 		jhit = 0;
 		try {
@@ -777,12 +777,14 @@ class simTask implements Callable<Integer>{
 	public Integer call(){	
 		long startTime,endTime,midTime;		
 		startTime = System.currentTimeMillis();//获取当前时间
+		jedis = redisUtil.getJedis();
+		Connection conn = null;
+		PreparedStatement pst1 = null,pst2 = null;
 		try {
-			Connection conn = ConnectionSource.getConnection();
-			PreparedStatement pst1;
+			conn = ConnectionSource.getConnection();
 			pst1 = conn.prepareStatement("select iid from "+traceTable+" where uid=? and type=0");
 			//选择用户浏览的所有新闻
-			PreparedStatement pst2 = conn.prepareStatement("select count(iid) from "+traceTable+" where uid=? and type=0");//选择用户浏览的所有新闻
+			pst2 = conn.prepareStatement("select count(iid) from "+traceTable+" where uid=? and type=0");//选择用户浏览的所有新闻
 			ResultSet set; int newsnum = 0;
 			int iid2; float finalsim = 0;
 			String recommendlist="",weightlist="";
@@ -844,12 +846,32 @@ class simTask implements Callable<Integer>{
 			  lock.unlock();
 			}
 			
-			pst1.close();
-	        conn.close();
-	        errorWriter.close();
+			
 		} catch (SQLException | IOException e) {
 			// TODO Auto-generated catch block
+			try {
+				errorWriter.write(e.toString());
+			} catch (IOException e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}	
 			e.printStackTrace();
+		}finally {
+			try {
+				pst1.close();
+				pst2.close();
+				conn.close();
+			} catch (SQLException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+	       
+	        try {
+				errorWriter.close();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 		}
 
 		redisUtil.returnResource(jedis);

@@ -340,12 +340,60 @@ public class map {
 		
 	}
 	
-	
+		//剔除掉iid不在news4caixin中的用户记录
+		public void map7() throws SQLException, IOException {
+			// TODO Auto-generated method stub
+			long endTime,startTime = System.currentTimeMillis();
+			Connection conn = ConnectionSource.getConnection();
+			conn.setAutoCommit(false);
+			PreparedStatement pst = conn.prepareStatement("delete from news4xisihutong where id = ?");//选择用户浏览的所有新闻
+			Statement st = conn.createStatement();
+			st.execute("create temporary table iids (iid int(11) not null) select iid from news4xisihutong group by iid having count(iid)>1");
+			st.execute("create temporary table ids (id int(11) not null,iid int(11) not null) select id,iid from news4xisihutong where iid in (select iid from iids)");
+			HashMap<Integer, Integer> hm = new HashMap<Integer, Integer>();
+			ResultSet set = st.executeQuery("select id,iid from ids");
+			System.out.println("准备完毕");
+			int num=0,iid,id;
+			while(set.next())
+			{
+				id = set.getInt(1);
+				iid = set.getInt(2);
+				if(!hm.containsKey(iid))
+				{
+					hm.put(iid, 0);
+				}else{
+					pst.setInt(1, id);
+					pst.addBatch();
+					num++;
+					if(num%1000==0)
+					{
+						pst.executeBatch();   
+			            conn.commit();   
+			            pst.clearBatch();
+			            endTime = System.currentTimeMillis();
+			            System.out.println(num+"*w 运行时间："+(endTime-startTime)+"ms");
+			            startTime = endTime;
+					}
+				}				
+			}
+			set.close();
+			pst.executeBatch();   
+            conn.commit();   
+            pst.clearBatch();
+			
+            st.execute("drop table iids");
+            st.execute("drop table ids");
+			pst.close();
+			st.close();
+			conn.close();
+			
+		}	
 	public static void main(String[] args){
 		// TODO Auto-generated method stub
 		
 		try {
-			new map().map6();
+			new map().map7();
+			System.out.println("ok");
 		} catch (SQLException | IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();

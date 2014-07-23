@@ -40,7 +40,7 @@ public final class redisUtil {
             config.setMaxIdle(MAX_IDLE);
             config.setMaxWait(MAX_WAIT);
             config.setTestOnBorrow(TEST_ON_BORROW);
-            jedisPool = new JedisPool(config, ADDR, PORT);
+            jedisPool = new JedisPool(config, ADDR, PORT, 100000);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -55,7 +55,23 @@ public final class redisUtil {
     	try {
             if (jedisPool != null) {
                 Jedis resource = jedisPool.getResource();
+                
                 return resource;
+            } else {
+                return null;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+    
+    public synchronized static jedisProxy getJedisex() {
+    	
+    	try {
+            if (jedisPool != null) {
+                Jedis resource = jedisPool.getResource();  
+                return new jedisProxy(resource);
             } else {
                 return null;
             }
@@ -72,6 +88,12 @@ public final class redisUtil {
     public synchronized static void returnResource(final Jedis jedis) {
         if (jedis != null) {
             jedisPool.returnResource(jedis);
+        }
+    }
+    
+    public synchronized static void returnResource(final jedisProxy jedisPro) {
+        if (jedisPro != null) {
+            jedisPool.returnResource(jedisPro.getJedis());
         }
     }
     
