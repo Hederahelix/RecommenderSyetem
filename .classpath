@@ -19,5 +19,6 @@
 	<classpathentry kind="lib" path="lib/jna-4.0.0.jar"/>
 	<classpathentry kind="lib" path="lib/jedis-2.1.0.jar"/>
 	<classpathentry kind="lib" path="lib/log4j-1.2.17.jar"/>
+	<classpathentry kind="lib" path="lib/javaml-0.1.7.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

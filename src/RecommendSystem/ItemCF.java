@@ -28,60 +28,212 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.apache.log4j.Logger;
+
 import redis.clients.jedis.Jedis;
 
 public class ItemCF {
-
 	
-	//划分训练集
-	public void init(String tableName) throws SQLException{
+	public void startIcfex(String traceTable,String[] tokenTable,String recommendFile,String weightFile,int itemNum) throws SQLException, InterruptedException{
 		Connection conn = ConnectionSource.getConnection();
-		conn.setAutoCommit(false);
-		PreparedStatement pst1 = conn.prepareStatement("select id from "+tableName+" where uid=? order by time desc limit 1");
-		PreparedStatement pst2 = conn.prepareStatement("update "+tableName+" set type=1 where id=?");
 		Statement st = conn.createStatement();
+		//uid
+		int userNum = 100; String dbName;
+		st.execute("create temporary table uids (id int(11) not null AUTO_INCREMENT,uid int(11) not null,primary key (id))  select distinct uid from "+traceTable);//uid
+		PreparedStatement pst1 = conn.prepareStatement("select uid from uids where id>? limit "+userNum);//选择用户浏览的所有新闻
 		
-		ResultSet set = st.executeQuery("select distinct(uid) from "+tableName),set2;
-		int uid,id,num=0;
-		long startTime,endTime;
-		startTime = System.currentTimeMillis();//获取当前时间
-		while(set.next())
+
+		int dbNum = tokenTable.length;
+		PreparedStatement[] pst2 = new PreparedStatement[dbNum];			
+		for(int i=0;i<dbNum;i++)
 		{
-			uid = set.getInt(1);
-			pst1.setInt(1, uid);
-			set2 = pst1.executeQuery();//select id from trace4caixin where uid=? order by time desc limit 1
-			while(set2.next())
+			pst2[i] = conn.prepareStatement("SELECT DISTINCT token,tfidf FROM "+tokenTable[i]+" WHERE iid = ? ORDER BY tfidf DESC LIMIT 30");
+		}	
+				
+		ConcurrentHashMap<Integer, String> hit2 = new ConcurrentHashMap<Integer, String>(); //iid {token tfidf}
+		ConcurrentHashMap<Integer, Integer> iids = new ConcurrentHashMap<Integer, Integer>(); //iids
+		
+		int uid,iid,iidnum =0,total; ResultSet set; String tmpstring; ResultSet userset;int[] uids;
+		
+		//1.get all news iid and put them into iids(HashMap)
+		//2.get all tokens and put them into hit2(HashMap)
+		ResultSet newset = st.executeQuery("select distinct iid from "+traceTable);//只比较测试集合状态集出现过的新闻
+		while(newset.next())
+		{
+			iid = newset.getInt(1);
+			iids.put(iidnum++, iid);//加载iid
+			
+			pst2[iid%dbNum].setString(1, ""+iid);
+			set = pst2[iid%dbNum].executeQuery();
+			//加载分词
+			tmpstring = ""; 
+			while (set.next()) 
 			{
-				id = set2.getInt(1);
-				pst2.setInt(1, id);
-				pst2.addBatch();//update trace4caixin set type=1 where id=?
+				tmpstring += "{"+set.getString(1).trim()+" "+set.getString(2).trim()+"}";//{token tfidf}
 			}
-			set2.close();
-			num++;
-			if(num%5000 == 0)
-			{
-				pst2.executeBatch();   
-	            conn.commit();   
-	            pst2.clearBatch();
-	            endTime = System.currentTimeMillis();//获取当前时间
-				System.out.println(5000+" 耗时："+(endTime-startTime)+"ms");
-				startTime = endTime;
-			}
+			
+			hit2.put(iid, tmpstring);
+			set.close();
 		}
-		pst2.executeBatch();   
-        conn.commit();   
-        pst2.clearBatch();
-        
+		newset.close();
+		
+		set = st.executeQuery("select count(id) from uids");
+		set.next();
+		total = set.getInt(1);//新闻总数
 		set.close();
-		st.close(); 
+		for(int i=0;i<dbNum;i++)
+		{
+			pst2[i].close();
+		}	
 		
+		System.out.println("准备阶段结束");
 		
+		Semaphore semp = new Semaphore(20);
+		ExecutorService threadPool = Executors.newFixedThreadPool(20);
 		
-		pst1.close();
-		pst2.close();
-		conn.close();
-	}
+		int j;
+		
+		for(int i=0;i*userNum<total;i++)
+		{
+			pst1.setInt(1, i*userNum);
+			userset = pst1.executeQuery();//select uid from uids where uid>? limit 1000
+			uids = new int[userNum];
+			
+			for(j=0;userset.next();j++)
+			{
+				uids[j] = userset.getInt(1);
+			}
+			if(j<userNum-1)
+				uids[j]=-1;
+			
+			userset.close();
+			
+			semp.acquire();//等待有线程完成任务，再新建新的任务
+			System.out.println("--------------------------------"+i+"th thread start");
+			threadPool.submit(new simTask(i,1,uids,hit2,iids,iidnum,semp,itemNum,userNum,traceTable,recommendFile,weightFile));
+			
+			if(i%10==0)
+				System.out.println("--------------------------------"+i);
+		}
+		
+
+		threadPool.shutdown();
+		
+	    System.out.println("phase 2");
+	    
+	    while(!threadPool.awaitTermination(1, TimeUnit.MINUTES)){
+	    	
+        }
+	    
+	    //redisUtil.destory();
+	    st.execute("drop table uids;");//uid
+	    pst1.close();
+	    st.close();
+	    conn.close();
+	    
+	}	
 	
+	public void startIcf(String traceTable,String[] tokenTable,String recommendFile,String weightFile,int itemNum) throws SQLException, InterruptedException{
+		Connection conn = ConnectionSource.getConnection();
+		Statement st = conn.createStatement();
+		//uid
+		st.execute("create temporary table uids (id int(11) not null AUTO_INCREMENT,uid int(11) not null,primary key (id))  select distinct uid from "+traceTable);//uid
+				
+		int userNum = 100; String dbName;
+		PreparedStatement pst1 = conn.prepareStatement("select uid from uids where id>? limit "+userNum);//选择用户浏览的所有新闻
+		int dbNum = tokenTable.length;
+		PreparedStatement[] pst2 = new PreparedStatement[dbNum];
+				
+		for(int i=0;i<dbNum;i++)
+		{
+			pst2[i] = conn.prepareStatement("SELECT DISTINCT token,tfidf FROM "+tokenTable[i]+" WHERE iid = ? ORDER BY tfidf DESC LIMIT 30");
+		}	
+				
+		
+		ConcurrentHashMap<Integer, String> hit2 = new ConcurrentHashMap<Integer, String>(); //iid {token tfidf}
+		ConcurrentHashMap<Integer, Integer> iids = new ConcurrentHashMap<Integer, Integer>(); //iids
+		
+		int uid,iid,iidnum =0,total; ResultSet set; String tmpstring; ResultSet userset;int[] uids;
+		
+		//1.get all news iid and put them into iids(HashMap)
+		//2.get all tokens and put them into hit2(HashMap)
+		//ResultSet newset = st.executeQuery("select distinct iid from "+newsTable);
+		ResultSet newset = st.executeQuery("select distinct iid from "+traceTable);
+		while(newset.next())
+		{
+			iid = newset.getInt(1);
+			iids.put(iidnum++, iid);//加载iid
+			
+			pst2[iid%dbNum].setString(1, ""+iid);
+			set = pst2[iid%dbNum].executeQuery();
+			//加载分词
+			tmpstring = ""; 
+			while (set.next()) 
+			{
+				tmpstring += "{"+set.getString(1).trim()+" "+set.getString(2).trim()+"}";//{token tfidf}
+			}
+			
+			hit2.put(iid, tmpstring);
+			set.close();
+		}
+		newset.close();
+		
+		set = st.executeQuery("select count(id) from uids");
+		set.next();
+		total = set.getInt(1);//新闻总数
+		set.close();
+		for(int i=0;i<dbNum;i++)
+		{
+			pst2[i].close();
+		}	
+		
+		System.out.println("准备阶段结束");
+		
+		Semaphore semp = new Semaphore(20);
+		ExecutorService threadPool = Executors.newFixedThreadPool(20);
+		
+		int j;
+		
+		for(int i=0;i*userNum<total;i++)
+		{
+			pst1.setInt(1, i*userNum);
+			userset = pst1.executeQuery();//select uid from uids where uid>? limit 1000
+			uids = new int[userNum];
+			
+			for(j=0;userset.next();j++)
+			{
+				uids[j] = userset.getInt(1);
+			}
+			if(j<userNum-1)
+				uids[j]=-1;
+			
+			userset.close();
+			
+			semp.acquire();//等待有线程完成任务，再新建新的任务
+			System.out.println("--------------------------------"+i+"th thread start");
+			threadPool.submit(new simTask(i,1,uids,hit2,iids,iidnum,semp,itemNum,userNum,traceTable,recommendFile,weightFile));
+			
+			if(i%10==0)
+				System.out.println("--------------------------------"+i);
+		}
+		
+
+		threadPool.shutdown();
+		
+	    System.out.println("phase 2");
+	    
+	    while(!threadPool.awaitTermination(1, TimeUnit.MINUTES)){
+	    	
+        }
+	    
+	    //redisUtil.destory();
+	    st.execute("drop table uids;");//uid
+	    pst1.close();
+	    st.close();
+	    conn.close();
+	    
+	}	
+
 	public void calMultiEffect(String traceTable,String tokenTable,String recommendFile,String weightFile,int itemNum) throws SQLException, InterruptedException{
 		Connection conn = ConnectionSource.getConnection();
 		Statement st = conn.createStatement();
@@ -111,7 +263,7 @@ public class ItemCF {
 			tmpstring = ""; 
 			while (set.next()) 
 			{
-				tmpstring += "{"+set.getString(1).trim()+" "+set.getString(2).trim()+"}";
+				tmpstring += "{"+set.getString(1).trim()+" "+set.getString(2).trim()+"}";//{token tfidf}
 			}
 			
 			hit2.put(iid, tmpstring);
@@ -172,6 +324,7 @@ public class ItemCF {
 	    conn.close();
 	    
 	}
+	
 	
 	public void calMultiEffectByTrace(String traceTable,String recommendFile,String weightFile,int itemNum) throws SQLException, InterruptedException{
 		Connection conn = ConnectionSource.getConnection();
@@ -284,7 +437,7 @@ class simTask implements Callable<Integer>{
 	private static Lock lock = new ReentrantLock();
 	private int jhit;
 	private int jhitOld;
-	private FileWriter errorWriter;
+	private Logger logger = Logger.getLogger(simTask.class);
 	
 	private int recomiids[];
 	private float sims[];
@@ -311,20 +464,26 @@ class simTask implements Callable<Integer>{
 		jedis = redisUtil.getJedis();
 		newsWeight = new ArrayList<Float>();
 		jhit = 0;
-		try {
-			errorWriter = new FileWriter("F:/data/caixin/error/error"+id%10+".txt", true);
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}  
 	}
 	
+	
+	public float calSim(int iid2,ResultSet lookedNews)
+	{
+		float finalsim = 0;
+		if(type == 0)
+			finalsim = calSimbyTrace(iid2,lookedNews);
+		else
+			finalsim = calSimbyText(iid2,lookedNews);
+		return finalsim;
+	}
+	
+///////////////基于行为
 	public ArrayList<Integer> getTrace(int iid1,ConcurrentHashMap<Integer, String> hm1) 
 	{	
 		if(hm1.containsKey(iid1))
 		{
 			ArrayList<Integer> res = new ArrayList<Integer>();
-			String tmp = hm1.get(iid1);//{token,tfidf}
+			String tmp = hm1.get(iid1);//{token tfidf}
 			String[] uids = tmp.split(" ");
 			for(int i=0;i<uids.length;i++)
 				if(!uids[i].trim().equals(""))
@@ -337,40 +496,6 @@ class simTask implements Callable<Integer>{
 		else
 			return null;
 		
-	}
-	
-	public HashMap<String, Float> getToken(int iid1,ConcurrentHashMap<Integer, String> hm1) 
-	{
-		
-		if(hm1.containsKey(iid1))
-		{
-			HashMap<String, Float> res = new HashMap<String, Float>();
-			String tmp = hm1.get(iid1);//{token,tfidf}
-			Pattern p = Pattern.compile("\\{(.*?) (.*?)\\}");
-			Matcher matcher = p.matcher(tmp);
-
-            while(matcher.find()) 
-            {
-            	res.put(matcher.group(1).trim(), Float.parseFloat(matcher.group(2).trim()));
-            }
-
-            
-            	
-			return res;
-		}
-			
-		else
-			return null;
-	}
-	
-	public float calSim(int iid2,ResultSet lookedNews) throws SQLException, IOException
-	{
-		float finalsim = 0;
-		if(type == 0)
-			finalsim = calSimbyTrace(iid2,lookedNews);
-		else
-			finalsim = calSimbyText(iid2,lookedNews);
-		return finalsim;
 	}
 	
 	public float calSimilarByTrace(ArrayList<Integer> hm1,ArrayList<Integer> hm2)
@@ -399,62 +524,97 @@ class simTask implements Callable<Integer>{
 		return similar;
 	}
 	
-	public float calSimbyTrace(int iid2,ResultSet lookedNews) throws SQLException, IOException
+	public float calSimbyTrace(int iid2,ResultSet lookedNews)
 	{
 		float finalsim = 0,sim;
 		int   num = 0,iid1 = 0;
 		String key,tmp;
 		ArrayList<Integer> hm1 = null,hm2 = null;	
 		
-		while(lookedNews.next())//all the news which uid has look
-		{
-			
-			iid1 = lookedNews.getInt(1);
-			num++;
-			
-			if(iid1 == iid2)
-			{
-				finalsim += 1;
-				continue;
-			}
-			
-			if(iid1<iid2)	
-				key = iid2+" "+iid1;
-			else
-				key = iid1+" "+iid2;
-			
-			if((tmp = jedis.get(key))!=null)
-			{
-				sim = Float.parseFloat(tmp);
-				jhit++;
-			}else
+		try {
+			while(lookedNews.next())//all the news which uid has look
 			{
 				
-				hm1 = getTrace(iid1,hit2);//the users who looked the news iid1
-				hm2 = getTrace(iid2,hit2);//the users who looked the news iid2
-				if(hm1==null||hm2==null)
+				iid1 = lookedNews.getInt(1);
+				num++;
+				
+				if(iid1 == iid2)
 				{
-					errorWriter.write("iid1 = "+iid1+" iid2 = "+iid2+" hm1 or hm2 userids is null");
-					sim = 0;
+					finalsim += 1;
+					continue;
 				}
+				
+				if(iid1<iid2)	
+					key = iid2+" "+iid1;
 				else
+					key = iid1+" "+iid2;
+				
+				if((tmp = jedis.get(key))!=null)
 				{
-					sim = calSimilarByTrace(hm1, hm2);
+					sim = Float.parseFloat(tmp);
+					jhit++;
+				}else
+				{
+					
+					hm1 = getTrace(iid1,hit2);//the users who looked the news iid1
+					hm2 = getTrace(iid2,hit2);//the users who looked the news iid2
+					if(hm1==null||hm2==null)
+					{
+						logger.error("iid1 = "+iid1+" iid2 = "+iid2+" hm1 or hm2 userids is null");
+						sim = 0;
+					}
+					else
+					{
+						sim = calSimilarByTrace(hm1, hm2);
+					}
+					
+					jedis.setnx(key, ""+sim);
 				}
 				
-				jedis.setnx(key, ""+sim);
+				if(Float.isNaN(sim))
+				{
+					logger.error("iid1 = "+iid1+" iid2 = "+iid2+" sim is NAN");		
+				}	
+				
+				finalsim += sim;				
 			}
-			
-			if(Float.isNaN(sim))
-			{
-				errorWriter.write("iid1 = "+iid1+" iid2 = "+iid2+" sim is NAN");			
-			}	
-			
-			finalsim += sim;				
+		} catch (NumberFormatException | SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
 		}//while
 	
 		finalsim = finalsim/num;	
 		return finalsim;
+	}
+
+	
+///////////////基于文本	
+	public HashMap<String, Float> getToken(int iid1,ConcurrentHashMap<Integer, String> hm1) 
+	{
+		
+		if(hm1.containsKey(iid1))
+		{
+			HashMap<String, Float> res = new HashMap<String, Float>();
+			String tmp = hm1.get(iid1);//{token tfidf}
+			Pattern p = Pattern.compile("\\{(.*?) (.*?)\\}");
+			Matcher matcher = p.matcher(tmp);
+
+            while(matcher.find()) 
+            {
+            	res.put(matcher.group(1).trim(), Float.parseFloat(matcher.group(2).trim()));
+            }
+
+            
+            	
+			return res;
+		}
+			
+		else
+		{
+			logger.error("没有"+iid1+"的分词");
+			return null;
+		}
+			
 	}
 	
 	public float calSimilarByText(HashMap<String, Float> hm1,HashMap<String, Float> hm2)
@@ -478,6 +638,8 @@ class simTask implements Callable<Integer>{
 				
 			}
 		}
+		if(tmp2 == 0)
+			return 0;
 		
 		tmp2 = (float) Math.sqrt(tmp2);
 		iter = hm2.entrySet().iterator();
@@ -486,70 +648,85 @@ class simTask implements Callable<Integer>{
 			entry = (Map.Entry<String, Float>) iter.next();
 			tmp3 += Math.pow(entry.getValue(),2);//x2*x2
 		}
+		if(tmp3 == 0)
+			return 0;
+		
 		tmp3 = (float) Math.sqrt(tmp3);
 		
-		similar = tmp1/(tmp2*tmp3);
-
+		if(tmp2!=0&&tmp3!=0)
+			similar = tmp1/(tmp2*tmp3);
+		else
+			similar = 0;
 	//	System.out.println(similar);
 		return similar;
 	}
 	
-	public float calSimbyText(int iid2,ResultSet lookedNews) throws SQLException, IOException
+	public float calSimbyText(int iid2,ResultSet lookedNews)
 	{
 		float finalsim = 0,sim;
 		int   num = 0,iid1 = 0;
 		String key,tmp;
 		HashMap<String, Float> hm1,hm2;
-		while(lookedNews.next())//all the news which uid has look
-		{
-			
-			iid1 = lookedNews.getInt(1);
-			num++;
-			
-			if(iid1 == iid2)
+		
+		try {
+			while(lookedNews.next())//all the news which uid has look
 			{
-				finalsim += 1;
-				continue;
-			}
-			
-			if(iid1<iid2)	
-				key = iid2+" "+iid1;
-			else
-				key = iid1+" "+iid2;
-			
-			if((tmp = jedis.get(key))!=null)
-			{
-				sim = Float.parseFloat(tmp);
-				jhit++;
-			}else
-			{
-				hm1 = getToken(iid1,hit2);
-				hm2 = getToken(iid2,hit2);		
-				if(hm1==null||hm2==null)
+				
+				iid1 = lookedNews.getInt(1);
+				num++;
+				
+				if(iid1 == iid2)
 				{
-					errorWriter.write("iid1 = "+iid1+" iid2 = "+iid2+" hm1 or hm2 token is null");
-					sim = 0; 
+					finalsim += 1;
+					continue;
+				}
+				
+				if(iid1<iid2)	
+					key = iid2+" "+iid1;
+				else
+					key = iid1+" "+iid2;
+				
+				if((tmp = jedis.get(key))!=null)
+				{
+					sim = Float.parseFloat(tmp);
+					jhit++;
 				}else
 				{
-					sim = calSimilarByText(hm1, hm2);
-				}
+					hm1 = getToken(iid1,hit2);
+					hm2 = getToken(iid2,hit2);		
+					if(hm1==null||hm2==null)
+					{
+						logger.error("iid1 = "+iid1+" iid2 = "+iid2+" hm1 or hm2 token is null");	
+						sim = 0; 
+					}else
+					{
+						sim = calSimilarByText(hm1, hm2);
+					}
+						
 					
+					jedis.setnx(key, ""+sim);
+				}
 				
-				jedis.setnx(key, ""+sim);
-			}
-			
-			if(Float.isNaN(sim))
-			{
-				errorWriter.write("iid1 = "+iid1+" iid2 = "+iid2+" sim is NAN");			
-			}	
-			
-			finalsim += sim;				
-		}//while
+				if(Float.isNaN(sim))
+				{
+					logger.error("iid1 = "+iid1+" iid2 = "+iid2+" sim is NAN");		
+				}	
+				
+				finalsim += sim;				
+			}//while
+		} catch (NumberFormatException | SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			logger.error("line613 报错  ", e);
+		}
+		
+		
 	
 		finalsim = finalsim/num;	
 		return finalsim;
 	}
-	
+
+
 	public void initRecomiids()
 	{
 		minsim=-1;
@@ -585,6 +762,7 @@ class simTask implements Callable<Integer>{
 		String recommendlist="";
 		int temp1;
 		float temp2;
+		//排序
 		for (int i=0;i<itemNum;i++) 
 		{  
 			for (int j=i+1;j<itemNum;j++) 
@@ -635,9 +813,10 @@ class simTask implements Callable<Integer>{
 		} catch (SQLException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
+			logger.error("line686  报错  ", e);
 		}
 		
-		ResultSet set; int newsnum = 0;
+		ResultSet set = null; int newsnum = 0;
 		int iid2; float finalsim = 0;
 		String recommendlist="",weightlist="";
 		
@@ -659,8 +838,8 @@ class simTask implements Callable<Integer>{
 				
 				pst1.setInt(1, uids[i]);
 				set = pst1.executeQuery();//get all the news which uid has look			
-				
-				System.out.println(id+"th thread "+i+"th user id = "+uids[i]+" num = "+newsnum);
+			
+/*				System.out.println(id+"th thread "+i+"th user id = "+uids[i]+" num = "+newsnum);*/
 	
 				for(int j=0;j<iidnum;j++)//all the news
 				{
@@ -682,9 +861,10 @@ class simTask implements Callable<Integer>{
 				
 				newsWeight.clear();
 				set.close();
-			} catch (SQLException | IOException e) {
+			} catch (SQLException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
+				logger.error("line686  报错  uid="+uids[i], e);
 			}
 		}
 		//print recommend list
@@ -698,6 +878,7 @@ class simTask implements Callable<Integer>{
 			 writer2.write(weightlist);  
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
+			logger.error("line763 报错 ", e);
 			e.printStackTrace();
 		}
 		finally {
@@ -716,8 +897,7 @@ class simTask implements Callable<Integer>{
 			pst1.close();
 			pst2.close();
 			conn.close();
-			errorWriter.close();
-		} catch (SQLException | IOException e) {
+		} catch (SQLException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}

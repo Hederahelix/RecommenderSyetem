@@ -5,6 +5,7 @@ import java.io.BufferedWriter;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
@@ -267,9 +268,6 @@ public class initTables {
 		}
 		
 		
-		
-		
-		
 		PreparedStatement pst = conn.prepareStatement("select iid,contents from "+newsName+" where id > ? limit 10000");
 		//0.Prepare Work
 		Semaphore semp = new Semaphore(20);
@@ -277,7 +275,20 @@ public class initTables {
 		Jedis jedis = redisUtil.getJedis();
 		jedis.flushAll();
 		
-		
+		BufferedReader br;
+		HashMap<String, Integer> stopword = new HashMap<String, Integer>();
+		try {
+			String line;
+			br = new BufferedReader(new FileReader("../stopword.txt"));
+			while ((line = br.readLine()) != null) {
+				stopword.put(line, 1);
+			}
+			br.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
 		ResultSet set = stm.executeQuery("select count(id) from "+newsName);
 		set.next();
 		int total = set.getInt(1);//新闻总数
@@ -354,6 +365,10 @@ public class initTables {
 			threadPool.submit(new loadTask(i,filenum,filePath,tokenName));//分30个表
 		}
 	    
+	    threadPool.shutdown();
+	    while(!threadPool.awaitTermination(1, TimeUnit.MINUTES)){
+	    	System.out.println("------------wait for load file complete");
+        }
 	    /*String[] loadsql = new String[filenum];
 	    for(i=0;i<filenum;i++)
 		{
@@ -363,6 +378,30 @@ public class initTables {
 	    String[] createIndex={"CREATE INDEX `index1` ON "+tokenName+" (iid);","CREATE INDEX `index2` ON "+tokenName+" (token);","CREATE INDEX `index3` ON "+tokenName+" (tfidf,iid);"};	
         new dat2Db().loadwithoutindex(null, createIndex, loadsql);*/
         System.out.println("------------load work complete");
+		
+        System.out.println("------------merge tables work start");
+        sql = "CREATE TABLE IF NOT EXISTS "+tokenName+"_all(`id` int(11) NOT NULL AUTO_INCREMENT,"
+				+ "`token` varchar(255) NOT NULL,"
+				+ "`tf` float NOT NULL,"
+				+ "`tfidf` float NOT NULL,"
+				+ "`iid` int(11) DEFAULT NULL,"
+				+ "PRIMARY KEY (`id`),"
+				+ "KEY `index1` (`iid`),"
+				+ "KEY `index2` (`token`),"
+				+ "KEY `index3` (`tfidf`,`iid`)"
+				+ ") ENGINE=MERGE UNION=(";
+        
+        for(i=0;i<dbNum;i++)
+		{	
+			if(i==0)
+				sql += tokenName+"_"+i;
+			else
+				sql += ","+tokenName+"_"+i;
+			
+		}
+		sql+= ")";
+		stm.execute(sql);	
+		System.out.println("------------merge tables work complete");
 		
         stm.close();
         pst.close();

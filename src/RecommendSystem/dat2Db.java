@@ -15,6 +15,20 @@ import Dat2Db.ConnectionSource;
 
 public class dat2Db {
 	
+	/*public String escape(String sql_str){ 
+		sql_str.replaceAll("\\", "\\\\");
+		sql_str.replaceAll("/", "\\/");
+		sql_str.replaceAll("\"", "\\\"");
+		sql_str.replaceAll("\'", "\\\'");
+		sql_str.replaceAll("|", "\\|");
+		sql_str.replaceAll("-", "\\-");
+		sql_str.replaceAll(";", "\\;");
+		sql_str.replaceAll("[", "\\[");
+		sql_str.replaceAll("]", "\\]");
+	    
+	    return sql_str; 
+	}*/
+	
 	public void insert(String insertSql,int filedNum,String filename,String Regex) throws IOException, SQLException{
 		int sum = 0,line = 0;
 		String tempString = null; 		

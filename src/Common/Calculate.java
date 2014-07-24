@@ -383,6 +383,27 @@ public class Calculate {
 		conn.close();
 		endTime = System.currentTimeMillis();//获取当前时间
 		System.out.println("4："+(endTime-startTime)+"ms");*/
-		System.out.println(new Calculate().calSimilarByText("token4caixin", "100645962", "100645699"));
+		Connection conn = ConnectionSource.getConnection();
+		String[] dbname = new String[100];
+		for(int i=0;i<100;i++)
+		{
+			dbname[i] = "token4xisihutong_"+i;
+		}
+		PreparedStatement[] pst2 = new PreparedStatement[100];			
+		for(int i=0;i<100;i++)
+		{
+			pst2[i] = conn.prepareStatement("SELECT DISTINCT token,tfidf FROM "+dbname[i]+" WHERE iid = ? ORDER BY tfidf DESC LIMIT 30");
+		}
+		pst2[3100706 %100].setString(1, ""+3100706 );
+		ResultSet set = pst2[3100706 %100].executeQuery();
+		
+		HashMap<String, Float> hm1 = new HashMap();HashMap<String, Float> hm2;
+		while (set.next()) 
+		{
+			hm1.put(set.getString(1).trim(), Float.parseFloat(set.getString(2).trim()));
+		}
+		
+		set.close();
+		System.out.println(new Calculate().calSimilarByText("token4xisihutong", "100645962", "100645699"));
 	}
 }

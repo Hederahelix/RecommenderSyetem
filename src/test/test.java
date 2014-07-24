@@ -2,11 +2,21 @@ package test;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.HashMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+
+import net.sf.javaml.clustering.Clusterer;
+import net.sf.javaml.clustering.KMeans;
+import net.sf.javaml.core.Dataset;
+import net.sf.javaml.core.DefaultDataset;
+import net.sf.javaml.core.Instance;
+import net.sf.javaml.core.SparseInstance;
 
 import org.apache.log4j.Logger;
 
@@ -14,8 +24,17 @@ import Common.ConnectionSource;
 import redis.clients.jedis.Jedis;
 
 public class test {
+	
+	public static String escape(String sql_str){ 
+		sql_str = sql_str.replaceAll("\\\\", "\\\\\\\\");
+		sql_str = sql_str.replaceAll("\"", "\\\\\"");
+		sql_str = sql_str.replaceAll("'", "\\\\'");
+		sql_str = sql_str.replaceAll("%", "\\\\%");
+		sql_str = sql_str.replaceAll("_", "\\\\_");
+	    return sql_str; 
+	}
 
-	public static void main(String[] args) throws InterruptedException {
+	public static void main(String[] args) throws InterruptedException, SQLException {
 		// TODO Auto-generated method stub
 		/*String subKeys[] = new String[1000];
 		for(int i=0;i<5;i++)
@@ -59,7 +78,7 @@ public class test {
     		System.out.println(token+"\t"+tf+"\t"+iid);
     	}
 		*/
-		ExecutorService threadPool = Executors.newFixedThreadPool(20);
+		/*ExecutorService threadPool = Executors.newFixedThreadPool(20);
 		
 		for(int i=0;i<100;i++)
 		{
@@ -71,8 +90,88 @@ public class test {
 	    
 	    while(!threadPool.awaitTermination(1, TimeUnit.MINUTES)){
 	    	System.out.println("phase 2");
-        }
-
+        }*/
+		//System.out.println(escape("'_\"\\%"));
+		
+		/*Connection conn = ConnectionSource.getConnection();
+		Statement stmt = conn.createStatement();
+		String tablename,sql = "CREATE TABLE IF NOT EXISTS token4xisihutong_all(`id` int(11) NOT NULL AUTO_INCREMENT,"
+				+ "`token` varchar(255) NOT NULL,"
+				+ "`tf` float NOT NULL,"
+				+ "`tfidf` float NOT NULL,"
+				+ "`iid` int(11) DEFAULT NULL,"
+				+ "PRIMARY KEY (`id`),"
+				+ "KEY `index1` (`iid`),"
+				+ "KEY `index2` (`token`),"
+				+ "KEY `index3` (`tfidf`,`iid`)"
+				+ ") ENGINE=MERGE UNION=(";
+		Common.dat2Db db = new Common.dat2Db();
+		
+		for(int i=0;i<100;i++)
+		{	
+			if(i==0)
+				sql += "token4xisihutong_"+i;
+			else
+				sql += ","+"token4xisihutong_"+i;
+			
+		}
+		sql+= ")";
+		stmt.execute(sql);	
+		
+		stmt.close();
+		conn.close();*/
+		
+		
+		
+		Connection conn = ConnectionSource.getConnection();
+		PreparedStatement pst = conn.prepareStatement("SELECT DISTINCT token FROM token4xisihutong_all WHERE iid = ? ORDER BY tfidf DESC LIMIT 30");	
+		HashMap<String, Integer> tokenNum = new HashMap<String, Integer>();
+		
+		Statement st = conn.createStatement();
+		ResultSet iids = st.executeQuery("select distinct iid from trace4xisihutong"),set;
+		String token; int tokenid = 0,tokennum = 0;
+		
+		
+		while(iids.next())
+		{
+			int iid = iids.getInt(1);	
+			pst.setInt(1, iid);
+			set =pst.executeQuery();
+			while (set.next()) 
+			{
+				token = set.getString(1).trim();
+				if(!tokenNum.containsKey(token))
+					tokenNum.put(token, tokennum++);
+			}
+			set.close();
+		}
+		
+		iids.beforeFirst();
+		Dataset dataset = new DefaultDataset();
+		long startTime = System.currentTimeMillis();//获取当前时间
+		while(iids.next())
+		{
+			Instance instance= new SparseInstance(tokenid);
+			int iid = iids.getInt(1);	
+			pst.setInt(1, iid);
+			set =pst.executeQuery();
+			while (set.next()) 
+			{
+				token = set.getString(1).trim();
+				tokenid = tokenNum.get(token);
+				instance.put(tokenid, 1.0);
+			}
+			set.close();
+			dataset.add(instance);
+		}
+		
+	    int k = 3000;
+	        
+	    Clusterer km = new KMeans(k); 
+	    Dataset[] clusters = km.cluster(dataset);
+	    long endTime = System.currentTimeMillis();
+		System.out.println("insert4news 程序运行时间："+(endTime-startTime)/60000+"min");
+	   
 		
 	}
 		

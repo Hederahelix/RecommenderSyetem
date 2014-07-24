@@ -305,6 +305,7 @@ class segmentTask1 implements Callable<Integer>{
 		for (Iterator it = subset.keySet().iterator(); it.hasNext(); ) 
 		{
 		    int iid = (int) it.next();
+		    
 		    String contents = subset.get(iid);//iid contents
 		    
 		    res = Nlpir.spliteword(contents, "utf-8"); 
@@ -399,6 +400,12 @@ class segmentTask2 implements Callable<Integer>{
         		tf = Float.parseFloat(res[i+1]);
         		float tfidf = tf*idf;
         		linestring = token+"\t"+tf+"\t"+tfidf+"\t"+iid;
+        		if(token.equals("0.25"))
+        			System.out.println("-----------------------0.25 linestring ="+linestring+" id = "+id);
+        		
+        		if(token.equals("0.4"))
+        			System.out.println("-----------------------0.4 linestring ="+linestring+" id = "+id);
+        		
 				try {
 					bw[iid%dbNum].write(linestring);
 					bw[iid%dbNum].newLine();
@@ -445,6 +452,7 @@ class loadTask implements Callable<Integer>{
 	public loadTask(int dbid,int fileNum,String filePath,String tokenName){
 		this.dbid = dbid;
 		this.fileNum = fileNum;
+		this.tokenName = tokenName;
 		this.filePath = filePath;
 	}
 	
@@ -454,26 +462,26 @@ class loadTask implements Callable<Integer>{
 		long startTime = System.currentTimeMillis();//获取当前时间	
 		
 		String[] loadsql = new String[fileNum]; String fileName,dbName;
-		String[] createIndex = new String[fileNum*3];
+		String[] createIndex = new String[3];
 		
 		dbName = tokenName+"_"+dbid;
 		for(int i=0;i<fileNum;i++)
 		{
-			fileName = filePath+"token"+i+"for"+dbid+".txt";
+			fileName = filePath+"token"+i+"for"+dbid+".txt";//tmpfile = filePath+"token"+id+"for"+db+".txt"; 
 			
 			loadsql[i] = "LOAD DATA LOCAL INFILE '"+fileName+"' INTO TABLE "+dbName+" FIELDS TERMINATED BY '\t'"
-					+ " (token,tf,tfidf,iid);";
-			
-			createIndex[i*3]="CREATE INDEX `index1` ON "+dbName+" (iid);";
-			createIndex[i*3+1]="CREATE INDEX `index2` ON "+dbName+" (token);";
-			createIndex[i*3+2]="CREATE INDEX `index3` ON "+dbName+" (tfidf,iid);";	
-	        
+					+ " (token,tf,tfidf,iid);";     
 		}
+		
+		createIndex[0]="CREATE INDEX `index1` ON "+dbName+" (iid);";
+		createIndex[1]="CREATE INDEX `index2` ON "+dbName+" (token);";
+		createIndex[2]="CREATE INDEX `index3` ON "+dbName+" (tfidf,iid);";	
 		try {
 			new dat2Db().loadwithoutindex(null, createIndex, loadsql);
 		} catch (SQLException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
+			logger.error("line477  报错  ", e);
 		}
         
 		long endTime = System.currentTimeMillis();
